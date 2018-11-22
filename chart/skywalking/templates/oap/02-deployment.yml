@@ -1,0 +1,79 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-oap-deployment
+  labels:
+    app: oap
+{{ include "service.labels.standard" . | indent 4 }}
+{{ include "service.logging.deployment.label" . | indent 4 }}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: oap
+{{ include "service.labels.standard" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+        app: oap
+{{ include "service.labels.standard" . | indent 8 }}
+    spec:
+      serviceAccountName: {{ if .Values.rbac.create }}"{{ .Release.Name }}-sa"{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+      containers:
+      - name: oap
+        image: "{{ .Values.image.repository }}-oap:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: 11800
+          name: grpc
+        - containerPort: 12800
+          name: rest
+      {{- with .Values.resources }}
+        resources:
+{{ toYaml . | indent 10 }}
+      {{- end }}
+        env:
+{{- range $name, $value := .Values.env }}
+{{- if not (empty $value) }}
+        - name: {{ $name | quote }}
+          value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+        - name: SKYWALKING_COLLECTOR_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        volumeMounts:
+        - name: config
+          mountPath: /apache-skywalking-apm-incubating/config
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ .Release.Name }}-oap-cm
